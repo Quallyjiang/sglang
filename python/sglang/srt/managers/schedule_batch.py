@@ -83,6 +83,8 @@ global_server_args_dict = {
     "enable_two_batch_overlap": ServerArgs.enable_two_batch_overlap,
     "enable_dp_lm_head": ServerArgs.enable_dp_lm_head,
     "enable_ep_moe": ServerArgs.enable_ep_moe,
+    "enable_ep_moe_heto": ServerArgs.enable_ep_moe_heto,
+    "ep_moe_heto_gpu_experts": ServerArgs.ep_moe_heto_gpu_experts,
     "deepep_config": ServerArgs.deepep_config,
     "enable_nan_detection": ServerArgs.enable_nan_detection,
     "flashinfer_mla_disable_ragged": ServerArgs.flashinfer_mla_disable_ragged,

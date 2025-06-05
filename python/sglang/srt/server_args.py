@@ -170,6 +170,8 @@ class ServerArgs:
     enable_dp_lm_head: bool = False
     enable_two_batch_overlap: bool = False
     enable_ep_moe: bool = False
+    enable_ep_moe_heto: bool = False
+    ep_moe_heto_gpu_experts: int = 1
     enable_deepep_moe: bool = False
     deepep_mode: Optional[Literal["auto", "normal", "low_latency"]] = "auto"
     ep_num_redundant_experts: int = 0
@@ -1179,6 +1181,17 @@ class ServerArgs:
             "--enable-ep-moe",
             action="store_true",
             help="Enabling expert parallelism for moe. The ep size is equal to the tp size.",
+        )
+        parser.add_argument(
+            "--enable-ep-moe-heto",
+            action="store_true",
+            help="Enabling heto expert parallelism for moe. must be supplied with --enable-ep-moe",
+        )
+        parser.add_argument(
+            "--ep-moe-heto-gpu-experts",
+            type=int,
+            default=ServerArgs.ep_moe_heto_gpu_experts,
+            help="Number of gpu experts in heto EP moe. 0 means half, positive number mean gpu expert in lower range, negative means higher range. For exampl, 30 means 0~29 on GPU, -50 means 206~255 on GPU",
         )
         parser.add_argument(
             "--enable-two-batch-overlap",

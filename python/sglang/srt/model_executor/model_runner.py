@@ -199,6 +199,8 @@ class ModelRunner:
                 "enable_two_batch_overlap": server_args.enable_two_batch_overlap,
                 "enable_dp_lm_head": server_args.enable_dp_lm_head,
                 "enable_ep_moe": server_args.enable_ep_moe,
+                "enable_ep_moe_heto": server_args.enable_ep_moe_heto,
+                "ep_moe_heto_gpu_experts": server_args.ep_moe_heto_gpu_experts,
                 "enable_deepep_moe": server_args.enable_deepep_moe,
                 "deepep_config": server_args.deepep_config,
                 "flashinfer_mla_disable_ragged": server_args.flashinfer_mla_disable_ragged,
