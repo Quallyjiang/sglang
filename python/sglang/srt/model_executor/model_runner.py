@@ -197,6 +197,7 @@ class ModelRunner:
                 "enable_nan_detection": server_args.enable_nan_detection,
                 "enable_dp_attention": server_args.enable_dp_attention,
                 "enable_two_batch_overlap": server_args.enable_two_batch_overlap,
+                "two_batch_overlap_mode": server_args.two_batch_overlap_mode,
                 "enable_dp_lm_head": server_args.enable_dp_lm_head,
                 "enable_ep_moe": server_args.enable_ep_moe,
                 "enable_ep_moe_heto": server_args.enable_ep_moe_heto,
@@ -522,7 +523,7 @@ class ModelRunner:
         )
 
         # This can reduce thread conflicts and speed up weight loading.
-        if self.device != "cpu":
+        if self.device != "cpu" and not self.server_args.enable_ep_moe_heto:
             torch.set_num_threads(1)
         if self.device == "cuda":
             if torch.cuda.get_device_capability()[0] < 8:

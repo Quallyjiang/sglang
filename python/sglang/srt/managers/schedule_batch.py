@@ -81,6 +81,7 @@ global_server_args_dict = {
     "enable_deepep_moe": ServerArgs.enable_deepep_moe,
     "enable_dp_attention": ServerArgs.enable_dp_attention,
     "enable_two_batch_overlap": ServerArgs.enable_two_batch_overlap,
+    "two_batch_overlap_mode": ServerArgs.two_batch_overlap_mode,
     "enable_dp_lm_head": ServerArgs.enable_dp_lm_head,
     "enable_ep_moe": ServerArgs.enable_ep_moe,
     "enable_ep_moe_heto": ServerArgs.enable_ep_moe_heto,
