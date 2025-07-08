@@ -693,6 +693,9 @@ class DeepseekScalingRotaryEmbedding(RotaryEmbedding):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """PyTorch-native implementation equivalent to forward()."""
         if enable_esimd_opt and not self.is_neox_style:
+            # FIXME: Hack to simulate merge rope with previous gemm
+            if 1:
+                return query, key
             offsets_in = positions
             has_offset = 0
             if offsets:

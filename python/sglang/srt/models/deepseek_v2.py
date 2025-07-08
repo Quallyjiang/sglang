@@ -23,6 +23,7 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
+from sgl_kernel_esimd import esimd_add
 from torch import nn
 from tqdm import tqdm
 from transformers import PretrainedConfig
@@ -393,7 +394,7 @@ class DeepseekV2MoE(nn.Module):
 
         router_logits = self.gate(hidden_states)
         if global_server_args_dict["enable_ep_moe_heto"]:
-            final_hidden_states, shared_output = self.experts(
+            cpu_hidden_states, shared_output = self.experts(
                 hidden_states=hidden_states,
                 router_logits=router_logits,
                 op_shared_experts=self._forward_shared_experts,
@@ -406,10 +407,18 @@ class DeepseekV2MoE(nn.Module):
                 hidden_states=hidden_states, router_logits=router_logits
             )
 
-        if global_server_args_dict["enable_ep_moe_heto"] or not _is_cuda:
-            final_hidden_states *= self.routed_scaling_factor
+        # FIXME: Hack
+        # if global_server_args_dict["enable_ep_moe_heto"] or not _is_cuda:
+        #     final_hidden_states *= self.routed_scaling_factor
         if shared_output is not None:
-            final_hidden_states = final_hidden_states + shared_output
+            # final_hidden_states = final_hidden_states + shared_output
+            final_hidden_states = torch.empty_like(hidden_states)
+            esimd_add(
+                cpu_hidden_states,
+                shared_output,
+                final_hidden_states,
+                cpu_hidden_states.shape[0] * cpu_hidden_states.shape[1],
+            )
 
         if self.tp_size > 1:
             final_hidden_states = tensor_model_parallel_all_reduce(final_hidden_states)
@@ -1293,7 +1302,9 @@ class DeepseekV2AttentionMLA(nn.Module):
                 current_stream.wait_stream(self.alt_stream)
             else:
                 if enable_esimd_norm_rope_opt:
-                    q, k_nope = self.esimd_rmsNormFuse_kq(q, k_nope)
+                    # FIXME: Hack to simulate rmsnorm merge into later gemm
+                    if 0:
+                        q, k_nope = self.esimd_rmsNormFuse_kq(q, k_nope)
                 else:
                     q = self.q_a_layernorm(q)
                     k_nope = self.kv_a_layernorm(k_nope)
@@ -1385,10 +1396,11 @@ class DeepseekV2AttentionMLA(nn.Module):
                 )
             q = self.q_tmp
             k = self.k_tmp
-            q[:, :, : self.kv_lora_rank] = q_nope_out
-            k[:, :, : self.kv_lora_rank] = k_nope
-            q[:, :, self.kv_lora_rank :] = q_pe
-            k[:, :, self.kv_lora_rank :] = k_pe
+            # FIXME: Hack
+            # q[:, :, : self.kv_lora_rank] = q_nope_out
+            # k[:, :, : self.kv_lora_rank] = k_nope
+            # q[:, :, self.kv_lora_rank :] = q_pe
+            # k[:, :, self.kv_lora_rank :] = k_pe
             attn_output = self.attn_mqa(q, k, k_nope, forward_batch)
         attn_output = attn_output.view(-1, self.num_local_heads, self.kv_lora_rank)
 

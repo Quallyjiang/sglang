@@ -1,5 +1,6 @@
 import gc
 import logging
+import time
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
@@ -843,6 +844,7 @@ class EPMoESparseCPUInfer(EPMoESparseCPUInterface):
             hidden_size, top_k, torch.bfloat16, self.cached_tensors_size
         )
         self._create_expected_weights_set()
+        self.timestamps = []
 
     def _create_expected_weights_set(self):
         # create a set of weights names to be loaded,
@@ -968,7 +970,9 @@ class EPMoESparseCPUInfer(EPMoESparseCPUInterface):
             # there cannot be other prepare or enqueue in between
             # please make sure check operation strategies won't break this assumption
             self._switch_to_next_tensor_set()
-            self.fill_cpu_tensors(hidden_states, sorted_topk_ids, sorted_topk_weights)
+            # self.fill_cpu_tensors(hidden_states)
+            self.sorted_topk_ids = sorted_topk_ids
+            self.sorted_topk_weights = sorted_topk_weights
         else:
             # FIXME: redundant code
             # these are safe as only decode will run bto heto
@@ -984,12 +988,8 @@ class EPMoESparseCPUInfer(EPMoESparseCPUInterface):
                 non_blocking=True,
                 dtype=torch.bfloat16,
             )
-            self.adhoc_sorted_topk_ids_cpu = sorted_topk_ids.to(
-                self.device, non_blocking=True, dtype=torch.int32
-            )
-            self.adhoc_sorted_topk_weights_cpu = sorted_topk_weights.to(
-                self.device, non_blocking=True
-            )
+            self.adhoc_sorted_topk_ids_cpu = sorted_topk_ids
+            self.adhoc_sorted_topk_weights_cpu = sorted_topk_weights
 
     def forward_enqueue(self, hidden_states: torch.Tensor):
         if self.cpu_moe_engine is None:
@@ -999,8 +999,8 @@ class EPMoESparseCPUInfer(EPMoESparseCPUInterface):
         if n_tokens <= self.cached_tensors_size:
             forward_experts_func = self.cpu_moe_engine.forward_experts(
                 self.cpu_hidden_states.data_ptr(),
-                self.cpu_sorted_topk_ids.data_ptr(),
-                self.cpu_sorted_topk_weights.data_ptr(),
+                self.sorted_topk_ids.data_ptr(),
+                self.sorted_topk_weights.data_ptr(),
                 self.cpu_result.data_ptr(),
                 n_tokens,
             )
@@ -1024,9 +1024,11 @@ class EPMoESparseCPUInfer(EPMoESparseCPUInterface):
                 forward_experts_func,
             )
         elif hidden_states.device.type in ["cpu", "xpu"]:
+            self.before_device_sync = time.time()
             torch.get_device_module(hidden_states.device).synchronize(
-                hidden_states.device
+                hidden_states.device.index
             )
+            self.before_submit = time.time()
             self.cpu_infer.submit(forward_experts_func)
         else:
             raise ValueError(
@@ -1041,7 +1043,17 @@ class EPMoESparseCPUInfer(EPMoESparseCPUInterface):
                 torch.cuda.current_stream(hidden_states_device).cuda_stream
             )
         elif hidden_states_device.type in ["xpu", "cpu"]:
+            self.before_cpu_sync = time.time()
             self.cpu_infer.sync()
+            self.after_cpu_sync = time.time()
+            self.timestamps.append(
+                (
+                    self.before_device_sync,
+                    self.before_submit,
+                    self.before_cpu_sync,
+                    self.after_cpu_sync,
+                )
+            )
         else:
             raise ValueError(
                 f"Unsupported device: {hidden_states_device}. Only cuda, xpu and cpu are supported now"
@@ -1128,8 +1140,6 @@ class EPMoESparseCPUInfer(EPMoESparseCPUInterface):
         # )
         assert bs <= self.cpu_hidden_states.shape[0]
         self.cpu_hidden_states[:bs].copy_(hidden_states, non_blocking=True)
-        self.cpu_sorted_topk_ids[:bs].copy_(sorted_topk_ids, non_blocking=True)
-        self.cpu_sorted_topk_weights[:bs].copy_(sorted_topk_weights, non_blocking=True)
 
 
 class EPMoEHeto(EPMoESparse):
@@ -1240,13 +1250,15 @@ class EPMoEHeto(EPMoESparse):
         self.forward_routed_experts_sync(
             hidden_states_device,
         )
-        result = self.forward_routed_experts_combine(
-            hidden_states_shape,
-            hidden_states_device,
-            hidden_states_dtype,
-            gpu_result,
-            cpu_result,
-        )
+        # FIXME: Hack for profiling
+        result = cpu_result
+        # result = self.forward_routed_experts_combine(
+        #     hidden_states_shape,
+        #     hidden_states_device,
+        #     hidden_states_dtype,
+        #     gpu_result,
+        #     cpu_result,
+        # )
         return result, shared_output
 
     def forward_routed_experts_prepare(

@@ -479,6 +479,24 @@ def latency_test_run_once(
     )
     measurement_results["total_latency"] = tot_latency
     measurement_results["overall_throughput"] = throughput
+
+    layers = model_runner.model.model.layers
+    for l in range(3, len(layers)):
+        t = layers[l].mlp.experts.cpu_moe.timestamps
+        for before_dev_sync, after_dev_sync, before_cpu_sync, after_cpu_sync in t:
+            before_dev_sync *= 1e6
+            after_dev_sync *= 1e6
+            before_cpu_sync *= 1e6
+            after_cpu_sync *= 1e6
+            rank_print(
+                f"Layer {l} before_dev_sync:{before_dev_sync:.6f}, after_dev_sync:{after_dev_sync:.6f}, "
+                f"before_cpu_sync:{before_cpu_sync:.6f}, after_cpu_sync:{after_cpu_sync:.6f}, "
+                f"cpu moe latency: {after_cpu_sync - after_dev_sync:.6f}, "
+                f"dev latency: {after_dev_sync - before_dev_sync:.6f}, "
+                f"gpu spare time: {after_cpu_sync - before_cpu_sync:.6f}, "
+            )
+        layers[l].mlp.experts.cpu_moe.timestamps = []
+
     return measurement_results
 
 

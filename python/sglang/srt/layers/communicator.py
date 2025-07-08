@@ -186,7 +186,11 @@ class LayerCommunicator:
                 residual = hidden_states
                 hidden_states = self.input_layernorm(hidden_states)
             else:
-                hidden_states, residual = self.input_layernorm(hidden_states, residual)
+                # FIXME: Hack to simulate rmsnorm merge with previous layer expert + shared expert
+                if 0:
+                    hidden_states, residual = self.input_layernorm(
+                        hidden_states, residual
+                    )
 
         hidden_states = self._communicate_simple_fn(
             hidden_states=hidden_states,
