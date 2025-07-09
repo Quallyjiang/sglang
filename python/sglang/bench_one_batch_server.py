@@ -374,6 +374,7 @@ def run_benchmark(server_args: ServerArgs, bench_args: BenchArgs):
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("spawn", force=True)
     parser = argparse.ArgumentParser()
     ServerArgs.add_cli_args(parser)
     BenchArgs.add_cli_args(parser)
