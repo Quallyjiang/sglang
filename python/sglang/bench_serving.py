@@ -597,7 +597,8 @@ class BenchmarkMetrics:
     concurrency: float
 
 
-SHAREGPT_URL = "https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered/resolve/main/ShareGPT_V3_unfiltered_cleaned_split.json"
+hf_endpoint = os.getenv("HF_ENDPOINT", "https://huggingface.co")
+SHAREGPT_URL = f"{hf_endpoint}/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered/resolve/main/ShareGPT_V3_unfiltered_cleaned_split.json"
 
 
 def download_and_cache_file(url: str, filename: Optional[str] = None):
