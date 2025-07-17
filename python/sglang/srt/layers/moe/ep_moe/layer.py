@@ -663,9 +663,10 @@ class EPMoESparse(EPMoE):
 
     def weight_loader(self, param, loaded_weight, weight_name, shard_id, expert_id):
         local_expert_id = self.expert_id_to_local[expert_id]
-        return super().weight_loader(
-            param, loaded_weight, weight_name, shard_id, local_expert_id
-        )
+        if local_expert_id != -1:
+            super().weight_loader(
+                param, loaded_weight, weight_name, shard_id, local_expert_id
+            )
 
     def select_experts(self, **kwargs):
         topk_weights, topk_ids = select_experts(**kwargs)
@@ -857,6 +858,14 @@ class EPMoESparseCPUInfer(EPMoESparseCPUInterface):
         shard_id: str,
         expert_id: int,
     ) -> None:
+        weight_key = (
+            expert_id,
+            shard_id,
+            "weight_scale_inv" if "scale_inv" in weight_name else "weight",
+        )
+        if weight_key not in self.expected_weights_set:
+            return
+
         if shard_id == "w2":
             param = (
                 self.w2_weight_scale_inv
@@ -873,11 +882,6 @@ class EPMoESparseCPUInfer(EPMoESparseCPUInterface):
             raise ValueError(f"Unknown weight: {weight_name}")
 
         super().weight_loader(param, loaded_weight, weight_name, shard_id, expert_id)
-        weight_key = (
-            expert_id,
-            shard_id,
-            "weight_scale_inv" if "scale_inv" in weight_name else "weight",
-        )
         if weight_key in self.expected_weights_set:
             self.expected_weights_set.remove(weight_key)
             if len(self.expected_weights_set) == 0:
