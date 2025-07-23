@@ -723,31 +723,49 @@ def _launch_subprocesses(
             pp_size_per_node * (server_args.node_rank // nnodes_per_tp_group + 1),
         )
 
-        for pp_rank in pp_rank_range:
-            for tp_rank in tp_rank_range:
-                reader, writer = mp.Pipe(duplex=False)
-                gpu_id = (
-                    server_args.base_gpu_id
-                    + ((pp_rank % pp_size_per_node) * tp_size_per_node)
-                    + (tp_rank % tp_size_per_node) * server_args.gpu_id_step
-                )
-                proc = mp.Process(
-                    target=run_scheduler_process,
-                    args=(
-                        server_args,
-                        port_args,
-                        gpu_id,
-                        tp_rank,
-                        pp_rank,
-                        None,
-                        writer,
-                    ),
-                )
+        extended_tp_rank = [("main", tp_size_per_node, tp_rank_range)]
 
-                with memory_saver_adapter.configure_subprocess():
-                    proc.start()
-                scheduler_procs.append(proc)
-                scheduler_pipe_readers.append(reader)
+        if server_args.offload_tp_size > 0:
+            offload_tp_size_per_node = (
+                server_args.offload_tp_size // nnodes_per_tp_group
+            )
+            offload_tp_rank_range = range(
+                offload_tp_size_per_node
+                * (server_args.node_rank % nnodes_per_tp_group),
+                offload_tp_size_per_node
+                * (server_args.node_rank % nnodes_per_tp_group + 1),
+            )
+            extended_tp_rank.append(
+                ("offload", offload_tp_size_per_node, offload_tp_rank_range)
+            )
+
+        for pp_rank in pp_rank_range:
+            for role, role_tp_size_per_node, role_tp_rank_range in extended_tp_rank:
+                for tp_rank in role_tp_rank_range:
+                    reader, writer = mp.Pipe(duplex=False)
+                    gpu_id = (
+                        server_args.base_gpu_id
+                        + ((pp_rank % pp_size_per_node) * role_tp_size_per_node)
+                        + (tp_rank % role_tp_size_per_node) * server_args.gpu_id_step
+                    )
+                    proc = mp.Process(
+                        target=run_scheduler_process,
+                        args=(
+                            server_args,
+                            port_args,
+                            gpu_id,
+                            tp_rank,
+                            pp_rank,
+                            None,
+                            writer,
+                            role,
+                        ),
+                    )
+
+                    with memory_saver_adapter.configure_subprocess():
+                        proc.start()
+                    scheduler_procs.append(proc)
+                    scheduler_pipe_readers.append(reader)
     else:
         # Launch the data parallel controller
         reader, writer = mp.Pipe(duplex=False)

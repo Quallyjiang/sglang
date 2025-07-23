@@ -264,6 +264,15 @@ class ServerArgs:
     enable_pdmux: bool = False
     sm_group_num: int = 3
 
+    # Offload device and TP size for heterogeneous parallelism
+    offload_device: str = (
+        "cpu"  # Device type for offload operations (e.g., 'cpu', 'cuda')
+    )
+    offload_tp_size: int = 1  # TP size for offload device
+    offload_op_list: Optional[List[str]] = dataclasses.field(
+        default_factory=list
+    )  # List of operations to offload (e.g., ['lm_head', 'moe'])
+
     def __post_init__(self):
         # Expert parallelism
         if self.enable_ep_moe:
@@ -1763,6 +1772,25 @@ class ServerArgs:
             "--weight-loader-disable-mmap",
             action="store_true",
             help="Disable mmap while loading weight using safetensors.",
+        )
+        parser.add_argument(
+            "--offload-device",
+            type=str,
+            default=ServerArgs.offload_device,
+            help="Device type for offload operations (e.g., cpu, cuda).",
+        )
+        parser.add_argument(
+            "--offload-tp-size",
+            type=int,
+            default=ServerArgs.offload_tp_size,
+            help="TP size for offload device.",
+        )
+        parser.add_argument(
+            "--offload-op-list",
+            type=str,
+            nargs="+",
+            default=None,
+            help="List of operations to offload (e.g., lm_head, moe).",
         )
 
     @classmethod

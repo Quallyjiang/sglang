@@ -237,13 +237,20 @@ class Scheduler(
         tp_rank: int,
         pp_rank: int,
         dp_rank: Optional[int],
+        role: str = "main",  # New argument for scheduler role
     ):
+        # Store and log the role
+        self.role = role
+        logger.info(f"Scheduler initialized with role: {self.role}")
+
         # Parse args
         self.server_args = server_args
         self.tp_rank = tp_rank
         self.pp_rank = pp_rank
         self.dp_rank = dp_rank
-        self.tp_size = server_args.tp_size
+        self.tp_size = (
+            server_args.tp_size if role == "main" else server_args.offload_tp_size
+        )
         self.pp_size = server_args.pp_size
         self.dp_size = server_args.dp_size
         self.schedule_policy = server_args.schedule_policy
@@ -348,6 +355,7 @@ class Scheduler(
             pp_rank=pp_rank,
             dp_rank=dp_rank,
             nccl_port=port_args.nccl_port,
+            role=role,
         )
 
         # Launch a draft worker for speculative decoding

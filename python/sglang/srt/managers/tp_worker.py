@@ -61,11 +61,15 @@ class TpModelWorker:
         is_draft_worker: bool = False,
         req_to_token_pool: Optional[ReqToTokenPool] = None,
         token_to_kv_pool_allocator: Optional[BaseTokenToKVPoolAllocator] = None,
+        role: str = "main",
     ):
         # Parse args
-        self.tp_size = server_args.tp_size
+        self.tp_size = (
+            server_args.tp_size if role == "main" else server_args.offload_tp_size
+        )
         self.tp_rank = tp_rank
         self.pp_rank = pp_rank
+        self.role = role
 
         # Init model and tokenizer
         self.model_config = ModelConfig.from_server_args(
@@ -83,7 +87,7 @@ class TpModelWorker:
             mem_fraction_static=server_args.mem_fraction_static,
             gpu_id=gpu_id,
             tp_rank=tp_rank,
-            tp_size=server_args.tp_size,
+            tp_size=self.tp_size,
             pp_rank=pp_rank,
             pp_size=server_args.pp_size,
             nccl_port=nccl_port,
@@ -91,6 +95,7 @@ class TpModelWorker:
             is_draft_worker=is_draft_worker,
             req_to_token_pool=req_to_token_pool,
             token_to_kv_pool_allocator=token_to_kv_pool_allocator,
+            role=self.role,
         )
         if server_args.skip_tokenizer_init:
             self.tokenizer = self.processor = None
