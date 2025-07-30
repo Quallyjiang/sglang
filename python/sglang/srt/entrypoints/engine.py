@@ -742,6 +742,9 @@ def _launch_subprocesses(
         for pp_rank in pp_rank_range:
             for role, role_tp_size_per_node, role_tp_rank_range in extended_tp_rank:
                 for tp_rank in role_tp_rank_range:
+                    logger.warning(
+                        f"Creating scheduler process for {role=} {tp_rank=} {pp_rank=}"
+                    )
                     reader, writer = mp.Pipe(duplex=False)
                     gpu_id = (
                         server_args.base_gpu_id

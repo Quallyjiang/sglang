@@ -268,7 +268,7 @@ class ServerArgs:
     offload_device: str = (
         "cpu"  # Device type for offload operations (e.g., 'cpu', 'cuda')
     )
-    offload_tp_size: int = 1  # TP size for offload device
+    offload_tp_size: int = 0  # TP size for offload device
     offload_op_list: Optional[List[str]] = dataclasses.field(
         default_factory=list
     )  # List of operations to offload (e.g., ['lm_head', 'moe'])
@@ -386,6 +386,7 @@ class ServerArgs:
 
         # Set kernel backends
         if self.device == "cpu":
+            print(f"setting attention backding")
             if self.attention_backend is None:
                 self.attention_backend = "intel_amx"
             self.sampling_backend = "pytorch"
@@ -1847,6 +1848,17 @@ class ServerArgs:
             1,
             None,
         }, "moe_dense_tp_size only support 1 and None currently"
+
+        if self.offload_tp_size > 0:
+            assert (
+                self.offload_op_list is not None
+            ), "offload_op_list must be set when offload_tp_size > 1"
+            assert (
+                self.pp_size == 1
+            ), "offload_tp_size > 1 is only supported with pipeline parallel size 1"
+            assert (
+                self.enable_dp_attention == False
+            ), "offload_tp_size > 1 is not supported with dp attention"
 
         self.check_lora_server_args()
 

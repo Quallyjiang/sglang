@@ -106,6 +106,11 @@ class PyNcclCommunicator:
         # `torch.cuda.device` is a context manager that changes the
         # current cuda device to the specified one
         with torch.cuda.device(device):
+            logger.warning(
+                f"Creating NCCL communicator on device {self.device}, "
+                f"rank {self.rank}, world size {self.world_size}, "
+                f"unique id {self.unique_id}"
+            )
             self.comm: ncclComm_t = self.nccl.ncclCommInitRank(
                 self.world_size, self.unique_id, self.rank
             )

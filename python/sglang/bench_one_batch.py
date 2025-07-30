@@ -135,7 +135,7 @@ class BenchArgs:
         )
 
 
-def load_model(server_args, port_args, tp_rank):
+def load_model(server_args, port_args, tp_rank, role="main"):
     suppress_other_loggers()
     rank_print = print if tp_rank == 0 else lambda *args, **kwargs: None
 
@@ -145,11 +145,12 @@ def load_model(server_args, port_args, tp_rank):
         mem_fraction_static=server_args.mem_fraction_static,
         gpu_id=tp_rank,
         tp_rank=tp_rank,
-        tp_size=server_args.tp_size,
+        tp_size=server_args.tp_size if role == "main" else server_args.offload_tp_size,
         pp_rank=0,
         pp_size=1,
         nccl_port=port_args.nccl_port,
         server_args=server_args,
+        role=role,
     )
     rank_print(f"max_total_num_tokens={model_runner.max_total_num_tokens}")
     tokenizer = get_tokenizer(
@@ -286,13 +287,14 @@ def correctness_test(
     port_args,
     bench_args,
     tp_rank,
+    role,
 ):
     # Configure the logger
     configure_logger(server_args, prefix=f" TP{tp_rank}")
     rank_print = print if tp_rank == 0 else lambda *args, **kwargs: None
 
     # Load the model
-    model_runner, tokenizer = load_model(server_args, port_args, tp_rank)
+    model_runner, tokenizer = load_model(server_args, port_args, tp_rank, role)
 
     # Prepare inputs
     input_ids, reqs = prepare_inputs_for_correctness_test(bench_args, tokenizer)
@@ -436,6 +438,7 @@ def latency_test(
     port_args,
     bench_args,
     tp_rank,
+    role,
 ):
     # Set CPU affinity
     if get_bool_env_var("SGLANG_SET_CPU_AFFINITY"):
@@ -446,7 +449,7 @@ def latency_test(
     rank_print = print if tp_rank == 0 else lambda *args, **kwargs: None
 
     # Load the model
-    model_runner, tokenizer = load_model(server_args, port_args, tp_rank)
+    model_runner, tokenizer = load_model(server_args, port_args, tp_rank, role)
 
     # Prepare inputs for warm up
     reqs = prepare_synthetic_inputs_for_latency_test(
@@ -521,8 +524,8 @@ def main(server_args, bench_args):
 
     port_args = PortArgs.init_new(server_args)
 
-    if server_args.tp_size == 1:
-        work_func(server_args, port_args, bench_args, 0)
+    if server_args.tp_size == 1 and server_args.offload_tp_size == 0:
+        work_func(server_args, port_args, bench_args, 0, "main")
     else:
         workers = []
         for tp_rank in range(server_args.tp_size):
@@ -533,6 +536,20 @@ def main(server_args, bench_args):
                     port_args,
                     bench_args,
                     tp_rank,
+                    "main",
+                ),
+            )
+            proc.start()
+            workers.append(proc)
+        for offload_tp_rank in range(server_args.offload_tp_size):
+            proc = multiprocessing.Process(
+                target=work_func,
+                args=(
+                    server_args,
+                    port_args,
+                    bench_args,
+                    offload_tp_rank,
+                    "offload",
                 ),
             )
             proc.start()

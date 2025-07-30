@@ -168,7 +168,9 @@ class ModelRunner:
     ):
         # Parse args
         self.mem_fraction_static = mem_fraction_static
-        self.device = server_args.device
+        self.device = (
+            server_args.device if role == "main" else server_args.offload_device
+        )
         self.gpu_id = gpu_id
         self.role = role
 
@@ -177,6 +179,8 @@ class ModelRunner:
             logger.addFilter(RankZeroFilter(tp_rank == 0))
         self.tp_rank = tp_rank
         self.tp_size = tp_size
+        self.all_tp_rank = tp_rank + (0 if role == "main" else server_args.tp_size)
+        self.all_tp_size = server_args.tp_size + server_args.offload_tp_size
         self.dp_size = server_args.dp_size
         self.pp_rank = pp_rank
         self.pp_size = pp_size
@@ -349,6 +353,7 @@ class ModelRunner:
 
     def model_specific_adjustment(self):
         server_args = self.server_args
+        print(f"server_args: {server_args}")
 
         if (
             server_args.attention_backend == "intel_amx"
@@ -528,25 +533,26 @@ class ModelRunner:
             # Only initialize the distributed environment on the target model worker.
             init_distributed_environment(
                 backend=backend,
-                world_size=self.tp_size * self.pp_size,
-                rank=self.tp_size * self.pp_rank + self.tp_rank,
+                world_size=self.all_tp_size * self.pp_size,
+                rank=self.all_tp_size * self.pp_rank + self.all_tp_rank,
                 local_rank=self.gpu_id,
                 distributed_init_method=dist_init_method,
                 timeout=self.server_args.dist_timeout,
             )
-            initialize_model_parallel(
-                tensor_model_parallel_size=self.tp_size,
-                pipeline_model_parallel_size=self.pp_size,
-                duplicate_tp_group=self.server_args.enable_pdmux,
-            )
-            initialize_dp_attention(
-                enable_dp_attention=self.server_args.enable_dp_attention,
-                tp_rank=self.tp_rank,
-                tp_size=self.tp_size,
-                dp_size=self.server_args.dp_size,
-                moe_dense_tp_size=self.server_args.moe_dense_tp_size,
-                pp_size=self.server_args.pp_size,
-            )
+            if self.role == "main":
+                initialize_model_parallel(
+                    tensor_model_parallel_size=self.all_tp_size,
+                    pipeline_model_parallel_size=self.pp_size,
+                    duplicate_tp_group=self.server_args.enable_pdmux,
+                )
+                initialize_dp_attention(
+                    enable_dp_attention=self.server_args.enable_dp_attention,
+                    tp_rank=self.tp_rank,
+                    tp_size=self.tp_size,
+                    dp_size=self.server_args.dp_size,
+                    moe_dense_tp_size=self.server_args.moe_dense_tp_size,
+                    pp_size=self.server_args.pp_size,
+                )
 
         min_per_gpu_memory = get_available_gpu_memory(
             self.device,
