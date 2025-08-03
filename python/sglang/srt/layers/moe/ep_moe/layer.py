@@ -1,5 +1,7 @@
 import gc
+import json
 import logging
+import os
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
@@ -684,18 +686,7 @@ class EPMoESparse(EPMoE):
         return self.expert_id_to_local_tensor[topk_ids]
 
     def create_default_expert_map(self, num_experts, tp_size):
-        ep_size = tp_size or get_tensor_model_parallel_world_size()
-        gpu_experts_per_rank = num_experts // ep_size
-        assert num_experts == gpu_experts_per_rank * ep_size
-        expert_map_grouped = {
-            e_id: e_id // gpu_experts_per_rank for e_id in range(num_experts)
-        }
-        expert_map_balanced = {e_id: e_id % ep_size for e_id in range(num_experts)}
-        expert_map_imbalanced = {
-            e_id: 0 if e_id < 62 else 1 for e_id in range(num_experts)
-        }
-        expert_map = expert_map_balanced
-        return expert_map
+        raise NotImplementedError()
 
 
 class EPMoESparseCPUInterface(EPMoESparse):
@@ -1120,6 +1111,7 @@ class EPMoEHeto(EPMoESparse):
         expert_map: dict[int, Union[int, str]] = {},
         num_gpu_experts=-1,
     ):
+        self.layer_id = layer_id
         expert_map = expert_map or self.create_default_expert_map(
             num_experts, tp_size, num_gpu_experts
         )
@@ -1282,27 +1274,54 @@ class EPMoEHeto(EPMoESparse):
             param, loaded_weight, weight_name, shard_id, expert_id
         )
 
+    def _try_load_expert_map(self, num_experts):
+        hetomap_env = os.environ.get("SGL_HETOFLOW_EXPERT_MAP", "")
+        if hetomap_env:
+            logger.info(f"Loading expert mapping from {hetomap_env}")
+            with open(hetomap_env, "r") as f:
+                mapping_plan = json.load(f)
+            # mapping_plan: {layer_id: {expert_id: rank_id, ...}, ...}
+            # Use self.layer_id to select the mapping for this layer
+            layer_map = mapping_plan.get(str(self.layer_id), None)
+            if layer_map is None:
+                raise ValueError(
+                    f"No expert mapping found for layer_id {self.layer_id} in {hetomap_env}"
+                )
+            # Convert keys to int if needed
+            assert isinstance(layer_map, list), "Expected layer_map to be a list"
+            assert (
+                len(layer_map) == num_experts
+            ), f"Expert map length mismatch expected {num_experts}, got {len(layer_map)}"
+            expert_map_plan = {i: layer_map[i] for i in range(num_experts)}
+            return expert_map_plan
+        return None
+
     def create_default_expert_map(self, num_experts, tp_size, num_gpu_experts):
-        # half on CPU, other half set even on GPUs
-        ep_size = tp_size or get_tensor_model_parallel_world_size()
-        expert_map_plan = dict()
-        # gpu_expert_number = num_experts // 2
-        gpu_in_high_part = False
-        # if num_gpu_experts == 0:
-        #     gpu_expert_total = num_experts // 2
-        if num_gpu_experts < 0:
-            gpu_in_high_part = True
-            gpu_expert_total = -num_gpu_experts
-        else:
-            gpu_expert_total = num_gpu_experts
-        logger.debug(f"create_default_expert_map, gpu_expert_total:{gpu_expert_total}")
-        for e_id in range(num_experts):
-            if (
-                num_experts - 1 - e_id if gpu_in_high_part else e_id
-            ) < gpu_expert_total:
-                expert_map_plan[e_id] = e_id % ep_size
+        expert_map_plan = self._try_load_expert_map(num_experts)
+        if expert_map_plan is None:
+            # half on CPU, other half set even on GPUs
+            ep_size = tp_size or get_tensor_model_parallel_world_size()
+            expert_map_plan = dict()
+            # gpu_expert_number = num_experts // 2
+            gpu_in_high_part = False
+            # if num_gpu_experts == 0:
+            #     gpu_expert_total = num_experts // 2
+            if num_gpu_experts < 0:
+                gpu_in_high_part = True
+                gpu_expert_total = -num_gpu_experts
             else:
-                expert_map_plan[e_id] = self.RANK_CPU
+                gpu_expert_total = num_gpu_experts
+
+            logger.debug(
+                f"create_default_expert_map, gpu_expert_total:{gpu_expert_total}"
+            )
+            for e_id in range(num_experts):
+                if (
+                    num_experts - 1 - e_id if gpu_in_high_part else e_id
+                ) < gpu_expert_total:
+                    expert_map_plan[e_id] = e_id % ep_size
+                else:
+                    expert_map_plan[e_id] = self.RANK_CPU
         return expert_map_plan
 
 
