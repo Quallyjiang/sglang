@@ -2214,7 +2214,7 @@ class DeepseekV2ForCausalLM(nn.Module):
                                 [q_a_proj_weight, kv_a_proj_weight], dim=0
                             )
 
-                            param_name = name.replace(
+                            param_name = q_a_proj_name.replace(
                                 "q_a_proj", "fused_qkv_a_proj_with_mqa"
                             )
                             param = params_dict[param_name]
