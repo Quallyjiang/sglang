@@ -1775,6 +1775,14 @@ class DeepseekV2ForCausalLM(nn.Module):
                     logger,
                     "Only Deepseek V3/R1 on NV-platform can use shared experts fusion optimization. Shared experts fusion optimization is disabled.",
                 )
+            elif (global_server_args_dict["enable_ep_moe_heto"]):
+                self.n_share_experts_fusion = 0
+                global_server_args_dict["n_share_experts_fusion"] = 0
+                log_info_on_rank0(
+                    logger,
+                    "EPMoE HeteroFlow is enabled, disable Shared experts fusion optimization.",
+                )
+
             else:
                 assert (
                     self.n_share_experts_fusion == self.tp_size
@@ -1786,6 +1794,7 @@ class DeepseekV2ForCausalLM(nn.Module):
                 and self.config.architectures[0] == architecture
                 and self.config.n_routed_experts == 256
                 and (not global_server_args_dict["enable_deepep_moe"])
+                and (not global_server_args_dict["enable_ep_moe_heto"])
             ):
                 self.n_share_experts_fusion = self.tp_size
                 global_server_args_dict["n_share_experts_fusion"] = self.tp_size
@@ -2205,7 +2214,7 @@ class DeepseekV2ForCausalLM(nn.Module):
                                 [q_a_proj_weight, kv_a_proj_weight], dim=0
                             )
 
-                            param_name = name.replace(
+                            param_name = q_a_proj_name.replace(
                                 "q_a_proj", "fused_qkv_a_proj_with_mqa"
                             )
                             param = params_dict[param_name]
