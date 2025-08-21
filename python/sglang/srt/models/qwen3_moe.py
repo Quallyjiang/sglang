@@ -106,10 +106,15 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
                 f"Tensor parallel size {self.tp_size} is greater than "
                 f"the number of experts {config.num_experts}."
             )
-        
+
+        additional_config: Dict[str, Any] = {}
         if global_server_args_dict["enable_ep_moe_heto"]:
             additional_config = dict(
                 num_gpu_experts=global_server_args_dict["ep_moe_heto_gpu_experts"]
+            )
+        elif global_server_args_dict["enable_deepep_moe"]:
+            additional_config = dict(
+                deepep_mode=DeepEPMode[global_server_args_dict["deepep_mode"]]
             )
 
         self.experts = get_moe_impl_class()(
@@ -507,7 +512,7 @@ class Qwen3MoeDecoderLayer(nn.Module):
         quant_config: Optional[QuantizationConfig] = None,
         prefix: str = "",
     ) -> None:
-        config.num_hidden_layers=6 #decrease layter num for debugging
+        config.num_hidden_layers = 6  # decrease layter num for debugging
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -692,7 +697,7 @@ class Qwen3MoeForCausalLM(nn.Module):
         quant_config: Optional[QuantizationConfig] = None,
         prefix: str = "",
     ) -> None:
-        config.num_hidden_layers=6 #decrease layter num for debugging
+        config.num_hidden_layers = 6  # decrease layter num for debugging
         super().__init__()
         self.pp_group = get_pp_group()
         self.config = config
