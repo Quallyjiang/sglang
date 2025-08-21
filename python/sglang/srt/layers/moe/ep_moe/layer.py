@@ -1181,6 +1181,7 @@ class EPMoEHeto(EPMoESparse):
         hidden_states_dtype = hidden_states.dtype
         self.forward_routed_experts_prepare(hidden_states, router_logits)
         cpu_result = self.forward_routed_experts_enqueue(hidden_states, router_logits)
+        shared_output=None
         if op_shared_experts is not None:
             shared_output = op_shared_experts(hidden_states)
         gpu_result = self.forward_routed_experts_maybe_gpu(
