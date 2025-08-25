@@ -192,7 +192,9 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
         final_hidden_states = self.experts(
             hidden_states=hidden_states, router_logits=router_logits
         )
-        final_hidden_states = final_hidden_states[0]
+        if global_server_args_dict["enable_ep_moe_heto"]:
+            # EPMoEHeto will return a tuple instead
+            final_hidden_states = final_hidden_states[0]
 
         if self.tp_size > 1:
             final_hidden_states = tensor_model_parallel_all_reduce(final_hidden_states)
