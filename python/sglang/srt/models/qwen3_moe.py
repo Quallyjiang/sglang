@@ -127,14 +127,7 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
             renormalize=config.norm_topk_prob,
             quant_config=quant_config,
             prefix=add_prefix("experts", prefix),
-            num_expert_group=1,
-            topk_group=1,
-            **additional_config,
-            # **(
-            #     dict(deepep_mode=DeepEPMode[global_server_args_dict["deepep_mode"]])
-            #     if global_server_args_dict["enable_deepep_moe"]
-            #     else {}
-            # ),
+            **additional_config
         )
 
         self.gate = ReplicatedLinear(
@@ -215,7 +208,6 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
                 top_k=self.top_k,
                 use_grouped_topk=False,
                 renormalize=self.renormalize,
-                num_token_non_padded=forward_batch.num_token_non_padded,
                 expert_location_dispatch_info=ExpertLocationDispatchInfo.init_new(
                     layer_id=self.layer_id,
                 ),
@@ -277,20 +269,16 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
         router_logits = state.pop("router_logits")
         hidden_states = state.hidden_states_mlp_input
         if router_logits is not None:
-            with get_global_expert_distribution_recorder().with_current_layer(
-                self.layer_id
-            ):
-                state.topk_weights_local, state.topk_idx_local = select_experts(
-                    hidden_states=hidden_states,
-                    router_logits=router_logits,
-                    top_k=self.top_k,
-                    use_grouped_topk=False,
-                    renormalize=self.renormalize,
-                    num_token_non_padded=state.forward_batch.num_token_non_padded,
-                    expert_location_dispatch_info=ExpertLocationDispatchInfo.init_new(
-                        layer_id=self.layer_id,
-                    ),
-                )
+            state.topk_weights_local, state.topk_idx_local = select_experts(
+                hidden_states=hidden_states,
+                router_logits=router_logits,
+                top_k=self.top_k,
+                use_grouped_topk=False,
+                renormalize=self.renormalize,
+                expert_location_dispatch_info=ExpertLocationDispatchInfo.init_new(
+                    layer_id=self.layer_id,
+                ),
+            )
         else:
             state.topk_idx_local = torch.full(
                 (0, self.top_k), -1, dtype=torch.int, device=hidden_states.device
@@ -514,7 +502,6 @@ class Qwen3MoeDecoderLayer(nn.Module):
         quant_config: Optional[QuantizationConfig] = None,
         prefix: str = "",
     ) -> None:
-        config.num_hidden_layers = 6  # decrease layter num for debugging
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -699,7 +686,6 @@ class Qwen3MoeForCausalLM(nn.Module):
         quant_config: Optional[QuantizationConfig] = None,
         prefix: str = "",
     ) -> None:
-        config.num_hidden_layers = 6  # decrease layter num for debugging
         super().__init__()
         self.pp_group = get_pp_group()
         self.config = config
