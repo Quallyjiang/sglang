@@ -110,7 +110,9 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
         additional_config: Dict[str, Any] = {}
         if global_server_args_dict["enable_ep_moe_heto"]:
             additional_config = dict(
-                num_gpu_experts=global_server_args_dict["ep_moe_heto_gpu_experts"]
+                num_gpu_experts=global_server_args_dict["ep_moe_heto_gpu_experts"],
+                num_expert_group=1,  # CPUInfer requires explicit num_expert_group value, defaults to 1
+                topk_group=1,  # CPUInfer requires explicit topk_group value, defaults to 1
             )
         elif global_server_args_dict["enable_deepep_moe"]:
             additional_config = dict(
@@ -127,7 +129,7 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
             renormalize=config.norm_topk_prob,
             quant_config=quant_config,
             prefix=add_prefix("experts", prefix),
-            **additional_config
+            **additional_config,
         )
 
         self.gate = ReplicatedLinear(
