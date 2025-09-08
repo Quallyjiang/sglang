@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Callable, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from torch.nn import Module
 
@@ -1303,26 +1304,26 @@ class EPMoEHeto(EPMoESparse):
             # half on CPU, other half set even on GPUs
             ep_size = tp_size or get_tensor_model_parallel_world_size()
             expert_map_plan = dict()
-            # gpu_expert_number = num_experts // 2
             gpu_in_high_part = False
-            # if num_gpu_experts == 0:
-            #     gpu_expert_total = num_experts // 2
             if num_gpu_experts < 0:
                 gpu_in_high_part = True
                 gpu_expert_total = -num_gpu_experts
             else:
                 gpu_expert_total = num_gpu_experts
-
             logger.debug(
                 f"create_default_expert_map, gpu_expert_total:{gpu_expert_total}"
             )
-            for e_id in range(num_experts):
-                if (
-                    num_experts - 1 - e_id if gpu_in_high_part else e_id
-                ) < gpu_expert_total:
-                    expert_map_plan[e_id] = e_id % ep_size
-                else:
-                    expert_map_plan[e_id] = self.RANK_CPU
+            if gpu_in_high_part:
+                gpu_range = range(num_experts - gpu_expert_total, num_experts)
+                cpu_range = range(0, num_experts - gpu_expert_total)
+            else:
+                gpu_range = range(0, gpu_expert_total)
+                cpu_range = range(gpu_expert_total, num_experts)
+            for e_id in cpu_range:
+                expert_map_plan[e_id] = self.RANK_CPU
+            for ep_rank, r in enumerate(np.array_split(list(gpu_range), ep_size)):
+                for e_id in r:
+                    expert_map_plan[int(e_id)] = ep_rank
         return expert_map_plan
 
 
